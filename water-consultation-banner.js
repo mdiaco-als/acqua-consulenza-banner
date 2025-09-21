@@ -166,11 +166,11 @@ const CONFIG = {
         line-height: 1.2;
       }
       
-      .consultation-bar #timer-label {
+      .consultation-bar #timer-label-mobile {
         display: inline-block;
       }
       
-      .consultation-bar #countdown {
+      .consultation-bar #countdown-mobile {
         white-space: nowrap;
         display: inline-block;
         font-variant-numeric: tabular-nums;
@@ -289,7 +289,7 @@ const CONFIG = {
     return el;
   }
 
-  // —— FIT FUNZIONI ——
+  // —— FIT FUNZIONI CORRETTE ——
   function fitTitleOneLine(id, maxSize=64, minSize=16){
     const el = document.getElementById(id);
     if (!el) return;
@@ -317,25 +317,27 @@ const CONFIG = {
   }
 
   function fitWhatsAppButton(id, maxSize=20, minSize=12){
-    const btn = document.getElementById(id), txt = document.getElementById('whatsapp-text');
-    if (!btn || !txt) return;
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    
+    // Trova il testo del pulsante all'interno del bottone stesso
+    const txt = btn.querySelector('span:last-child');
+    if (!txt) return;
+    
     const cw = contentWidth(btn.parentElement);
     if (cw <= 0) return;
 
     const BASE = 24, EPS = 1.5;
     btn.style.fontSize = BASE + 'px';
-    txt.style.fontSize = BASE + 'px';
     const w = btn.scrollWidth;
     let target = ((cw - EPS) / w) * BASE;
     target = Math.round(Math.max(minSize, Math.min(maxSize, target)) * 2) / 2;
     btn.style.fontSize = target + 'px';
-    txt.style.fontSize = target + 'px';
 
     let guard = 0;
     while (btn.scrollWidth > cw && target > minSize && guard < 6){
       target -= 0.5;
       btn.style.fontSize = target + 'px';
-      txt.style.fontSize = target + 'px';
       guard++;
     }
   }
@@ -346,8 +348,10 @@ const CONFIG = {
     const cw = contentWidth(block.parentElement);
     if (cw <= 0) return;
 
-    const label = document.getElementById('timer-label');
-    const countdown = document.getElementById('countdown');
+    // Trova gli elementi timer all'interno del blocco stesso
+    const spans = block.querySelectorAll('span');
+    const label = spans[0];
+    const countdown = spans[spans.length - 1]; // ultimo span
     if (!label || !countdown) return;
 
     const realText = countdown.textContent;
@@ -541,6 +545,31 @@ const CONFIG = {
         if (!document.getElementById('consultation-bar')){
           mountMarkup();
           broadcastDeadline();
+
+    // storage sync
+    window.addEventListener('storage', (e) => {
+      if (e.key === CONFIG.KEY_DEADLINE) {
+        updateTimer();
+        broadcastDeadline();
+      }
+    });
+
+    // timer: assicurati di non avviare più intervalli
+    if (!window.__cbInterval){
+      updateTimer();
+      window.__cbInterval = setInterval(updateTimer, 1000);
+    }
+  }
+
+  function init(){
+    mountMarkup();
+    initOnce();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+
+})();();
         }
         updateLayoutOffsets();
       }, 200));
@@ -575,29 +604,4 @@ const CONFIG = {
     if (frame){
       frame.addEventListener('load', () => setTimeout(broadcastDeadline, 0));
     }
-    broadcastDeadline();
-
-    // storage sync
-    window.addEventListener('storage', (e) => {
-      if (e.key === CONFIG.KEY_DEADLINE) {
-        updateTimer();
-        broadcastDeadline();
-      }
-    });
-
-    // timer: assicurati di non avviare più intervalli
-    if (!window.__cbInterval){
-      updateTimer();
-      window.__cbInterval = setInterval(updateTimer, 1000);
-    }
-  }
-
-  function init(){
-    mountMarkup();
-    initOnce();
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
-
-})();
+    broadcastDeadline
