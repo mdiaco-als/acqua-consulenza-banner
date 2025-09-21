@@ -3,8 +3,7 @@
   if (window.consultationBannerLoaded) return;
   window.consultationBannerLoaded = true;
 
-// —— CONFIG ——
-// se lo script è incluso da CDN, puoi configurarlo dal tag <script data-...>
+// —— CONFIG (legge i data-* dal tag <script> che include il file) ——
 const _scr = document.currentScript;
 const _ds  = _scr ? _scr.dataset : {};
 const CONFIG = {
@@ -13,6 +12,7 @@ const CONFIG = {
   PHONE: _ds.phone || "393406743923",
   MESSAGE: _ds.message || "Ciao Massimiliano, voglio prenotare la consulenza gratuita sull'acqua. Preferisco [mattina/pomeriggio/sera]"
 };
+
 
   // —— UTILS ——
   const throttle = (fn, wait = 150) => { let t = 0; return (...a)=>{ const n=Date.now(); if(n-t>=wait){ t=n; fn(...a);} }; };
@@ -29,7 +29,7 @@ const CONFIG = {
     :root{ --cb-extra-offset: 0px; }
     .consultation-bar{
       position:fixed; left:0; right:0;
-      bottom: var(--cb-extra-offset, 0px); /* <— si alza sopra footers fissi */
+      bottom: var(--cb-extra-offset, 0px);
       background:#2c5447; color:#fff; z-index:999999;
       padding:12px 16px; padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));
       font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -215,12 +215,11 @@ const CONFIG = {
     fitTitleOneLine('main-title', 64, 16);
     fitTimerBlock('timer-block', 30, 12);
     fitWhatsAppButton('whatsapp-btn', 20, 12);
-    updateLayoutOffsets(); // <— aggiorna spazi di sicurezza
+    updateLayoutOffsets();
   }
 
-  // —— LAYOUT OFFSETS: evita di coprire il bottone "Continua" ——
+  // —— LAYOUT: evita di coprire bottoni in fondo ——
   function detectFixedFooterHeight(){
-    // cerca elementi fissati in basso (escluso il banner) e torna l'altezza max
     let extra = 0;
     try{
       const nodes = document.body.getElementsByTagName('*');
@@ -230,144 +229,171 @@ const CONFIG = {
         const cs = getComputedStyle(n);
         if (cs.position !== 'fixed') continue;
         const rect = n.getBoundingClientRect();
-        const atBottom = (window.innerHeight - rect.bottom) <= 2; // appoggiato al fondo
-        const plausible = rect.height > 0 && rect.height < window.innerHeight * 0.5; // evita overlay grandi (modali)
+        const atBottom = (window.innerHeight - rect.bottom) <= 2;
+        const plausible = rect.height > 0 && rect.height < window.innerHeight * 0.5;
         if (atBottom && plausible){
           extra = Math.max(extra, Math.ceil(rect.height));
         }
       }
     } catch(e){}
-    return extra; // px
+    return extra;
   }
-
   function updateLayoutOffsets(){
     const bar = document.getElementById('consultation-bar');
     if (!bar) return;
     const barH = Math.ceil(bar.getBoundingClientRect().height);
-
     const extra = detectFixedFooterHeight();
     document.documentElement.style.setProperty('--cb-extra-offset', extra + 'px');
-
-    // padding-bottom del body per tenere liberi i contenuti (anche quando non c'è footer fisso)
-    const desired = barH + extra + 8; // 8px di respiro
+    const desired = barH + extra + 8;
     const current = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
     if (Math.abs(current - desired) > 1){
       document.body.style.paddingBottom = desired + 'px';
     }
   }
 
-  // —— INIT ——
-  function init(){
+  // —— DEADLINE & SYNC (fuori da init, così sono sempre disponibili) ——
+  function ensureDeadline(){
+    let iso = localStorage.getItem(CONFIG.KEY_DEADLINE);
+    if (!iso){
+      iso = new Date(Date.now() + CONFIG.DURATION_MS).toISOString();
+      localStorage.setItem(CONFIG.KEY_DEADLINE, iso);
+    }
+    return new Date(iso).getTime();
+  }
+  function getDeadlineISO(){ return new Date(ensureDeadline()).toISOString(); }
+  function sendDeadlineTo(targetWin){
+    try { targetWin?.postMessage({ type: 'watercalc:deadline', deadline: getDeadlineISO() }, '*'); } catch(e){}
+  }
+  function broadcastDeadline(){
+    const frame = document.getElementById('watercalc');
+    if (frame && frame.contentWindow) sendDeadlineTo(frame.contentWindow);
+  }
+
+  // —— TIMER (DOM-live: cerca i nodi a ogni tick, così sopravvive ai re-render) ——
+  let lastState = 'normal';
+  function formatTime(ms){
+    if (ms <= 0) return "Lista d'attesa";
+    const total = Math.floor(ms/1000);
+    const h = Math.floor(total/3600), m = Math.floor((total%3600)/60), s = total%60;
+    const nbsp = '\u00A0';
+    return `${pad2(h)}${nbsp}h${nbsp}${pad2(m)}${nbsp}m${nbsp}${pad2(s)}${nbsp}s`;
+  }
+  function updateTimer(){
+    const timerEl = document.getElementById('countdown');
+    const titleEl = document.getElementById('main-title');
+    const blockEl = document.getElementById('timer-block');
+    const waBtn = document.getElementById('whatsapp-btn');
+    const waText = document.getElementById('whatsapp-text');
+
+    if (!timerEl) return; // se il banner non è montato ora, aspettiamo il prossimo tick
+
+    try{
+      const remaining = ensureDeadline() - Date.now();
+      timerEl.textContent = formatTime(remaining);
+
+      let state = 'normal';
+      if (remaining <= 0) state = 'expired';
+      else if (remaining <= 5*60*1000) state = 'urgent';
+
+      if (state !== lastState){
+        if (blockEl){
+          if (state === 'expired'){
+            blockEl.classList.remove('timer-urgent'); blockEl.classList.add('expired');
+          } else if (state === 'urgent'){
+            blockEl.classList.add('timer-urgent'); blockEl.classList.remove('expired');
+          } else {
+            blockEl.classList.remove('timer-urgent','expired');
+          }
+        }
+        if (state === 'expired'){
+          if (titleEl) titleEl.textContent = "Consulenze gratuite terminate";
+          if (waText) waText.textContent = "Entra in lista";
+          if (waBtn){
+            waBtn.href = `https://wa.me/${CONFIG.PHONE}?text=${encodeURIComponent("Ciao Massimiliano, le consulenze gratuite sono terminate. Vorrei entrare in lista d'attesa per la prossima occasione.")}`;
+          }
+          requestAnimationFrame(()=> requestAnimationFrame(resizeAll));
+        }
+        lastState = state;
+      }
+    } catch(e){
+      console.warn('Errore timer:', e);
+      if (timerEl) timerEl.textContent = "Lista d'attesa";
+    }
+  }
+
+  // —— MOUNT / INIT ——
+  function mountMarkup(){
     const existing = document.getElementById('consultation-bar');
     if (existing) existing.remove();
-
     const bar = createBanner();
     document.body.appendChild(bar);
 
-    const els = {
-      bar,
-      title: document.getElementById('main-title'),
-      timerBlock: document.getElementById('timer-block'),
-      timer: document.getElementById('countdown'),
-      wa: document.getElementById('whatsapp-btn'),
-      watext: document.getElementById('whatsapp-text')
-    };
-
-    // link WhatsApp
-    if (els.wa){
-      els.wa.href = `https://wa.me/${CONFIG.PHONE}?text=${encodeURIComponent(CONFIG.MESSAGE)}`;
+    const wa = document.getElementById('whatsapp-btn');
+    if (wa){
+      wa.href = `https://wa.me/${CONFIG.PHONE}?text=${encodeURIComponent(CONFIG.MESSAGE)}`;
     }
-
-    // --- DEADLINE helpers (scopo locale a init) ---
-    function ensureDeadline(){
-      let iso = localStorage.getItem(CONFIG.KEY_DEADLINE);
-      if (!iso){
-        iso = new Date(Date.now() + CONFIG.DURATION_MS).toISOString();
-        localStorage.setItem(CONFIG.KEY_DEADLINE, iso);
-      }
-      return new Date(iso).getTime();
-    }
-    function getDeadlineISO(){ return new Date(ensureDeadline()).toISOString(); }
-    function sendDeadlineTo(targetWin){
-      try { targetWin?.postMessage({ type: 'watercalc:deadline', deadline: getDeadlineISO() }, '*'); } catch(e){}
-    }
-    function broadcastDeadline(){
-      const frame = document.getElementById('watercalc');
-      if (frame && frame.contentWindow) sendDeadlineTo(frame.contentWindow);
-    }
-
     // primo fit dopo layout/font
     const firstFit = () => { resizeAll(); };
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(firstFit);
     else requestAnimationFrame(() => requestAnimationFrame(firstFit));
+  }
 
-    // ricalcoli SOLO su eventi reali
-    window.addEventListener('resize', throttle(() => { resizeAll(); }, 150));
-    window.addEventListener('orientationchange', () => setTimeout(() => { resizeAll(); }, 60));
+  function initOnce(){
+    if (window.__cbInitDone) return;
+    window.__cbInitDone = true;
+
+    // listener globali (una volta sola)
+    window.addEventListener('resize', throttle(resizeAll, 150));
+    window.addEventListener('orientationchange', () => setTimeout(resizeAll, 60));
+
     if ('ResizeObserver' in window){
-      const ro = new ResizeObserver(throttle(() => { resizeAll(); }, 150));
-      ro.observe(els.bar);
+      const ro = new ResizeObserver(throttle(resizeAll, 150));
+      ro.observe(document.documentElement);
     }
 
-    // osserva cambi DOM (comparsa di footers fissi della piattaforma)
+    // osserva il DOM: se il banner sparisce (SPA re-render), lo rimontiamo
     if ('MutationObserver' in window){
-      const mo = new MutationObserver(throttle(updateLayoutOffsets, 200));
-      mo.observe(document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['class','style']});
+      const keepAlive = new MutationObserver(throttle(() => {
+        if (!document.getElementById('consultation-bar')){
+          mountMarkup();
+          broadcastDeadline();
+        }
+        updateLayoutOffsets();
+      }, 200));
+      keepAlive.observe(document.body, { childList:true, subtree:true });
     }
 
-    // sync messaggi con iframe
+    // visibilità/pagina mostrata (iOS back-forward cache, SPA)
+    window.addEventListener('pageshow', () => {
+      if (!document.getElementById('consultation-bar')) {
+        mountMarkup();
+        broadcastDeadline();
+      }
+      resizeAll();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible'){
+        if (!document.getElementById('consultation-bar')) {
+          mountMarkup();
+          broadcastDeadline();
+        }
+        resizeAll();
+      }
+    });
+
+    // messaggi dall'iframe (richiesta deadline)
     window.addEventListener('message', (e) => {
       if (e?.data?.type === 'watercalc:get-deadline') sendDeadlineTo(e.source);
     });
 
-    // invia la deadline all'iframe appena possibile
+    // invia deadline all'iframe appena possibile
     const frame = document.getElementById('watercalc');
     if (frame){
       frame.addEventListener('load', () => setTimeout(broadcastDeadline, 0));
     }
     broadcastDeadline();
 
-    // —— TIMER (solo testo, niente fit a ogni tick) ——
-    function formatTime(ms){
-      if (ms <= 0) return "Lista d'attesa";
-      const total = Math.floor(ms/1000);
-      const h = Math.floor(total/3600), m = Math.floor((total%3600)/60), s = total%60;
-      const nbsp = '\u00A0';
-      return `${pad2(h)}${nbsp}h${nbsp}${pad2(m)}${nbsp}m${nbsp}${pad2(s)}${nbsp}s`;
-    }
-
-    let lastState = 'normal';
-    function updateTimer(){
-      if (!els.timer) return;
-      try{
-        const remaining = ensureDeadline() - Date.now();
-        els.timer.textContent = formatTime(remaining);
-
-        let state = 'normal';
-        if (remaining <= 0) state = 'expired';
-        else if (remaining <= 5*60*1000) state = 'urgent';
-
-        if (state !== lastState){
-          if (state === 'expired'){
-            els.timerBlock?.classList.remove('timer-urgent'); els.timerBlock?.classList.add('expired');
-            els.title.textContent = "Consulenze gratuite terminate";
-            els.watext.textContent = "Entra in lista";
-            els.wa.href = `https://wa.me/${CONFIG.PHONE}?text=${encodeURIComponent("Ciao Massimiliano, le consulenze gratuite sono terminate. Vorrei entrare in lista d'attesa per la prossima occasione.")}`;
-            requestAnimationFrame(()=> requestAnimationFrame(resizeAll));
-          } else if (state === 'urgent'){
-            els.timerBlock?.classList.add('timer-urgent'); els.timerBlock?.classList.remove('expired');
-          } else {
-            els.timerBlock?.classList.remove('timer-urgent','expired');
-          }
-          lastState = state;
-        }
-      } catch(e){
-        console.warn('Errore timer:', e);
-        els.timer.textContent = "Lista d'attesa";
-      }
-    }
-
-    // storage sync: aggiorna timer e reinvia deadline
+    // storage sync
     window.addEventListener('storage', (e) => {
       if (e.key === CONFIG.KEY_DEADLINE) {
         updateTimer();
@@ -375,12 +401,19 @@ const CONFIG = {
       }
     });
 
-    // avvio timer
-    updateTimer();
-    setInterval(updateTimer, 1000);
+    // timer: assicurati di non avviare più intervalli
+    if (!window.__cbInterval){
+      updateTimer();
+      window.__cbInterval = setInterval(updateTimer, 1000);
+    }
   }
 
-  // mount
+  function init(){
+    mountMarkup();
+    initOnce();
+  }
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
+
 })();
