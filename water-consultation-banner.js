@@ -24,6 +24,15 @@ const CONFIG = {
     return Math.max(0, node.clientWidth - pl - pr);
   }
 
+  // —— SOLO DENTRO IL CORSO —— (URL tipo …/p-63890202/1)
+  function isCourseStepUrl(u){
+    try{
+      const p = (u || location).pathname;
+      // …/qualcosa-p-<ID>/<STEP>(/…)
+      return /\/p-\d+\/\d+(?:\/|$)/.test(p);
+    } catch(e){ return false; }
+  }
+
   // —— CSS ——
   const css = `
     :root{ --cb-extra-offset: 0px; }
@@ -128,18 +137,12 @@ const CONFIG = {
 
   // —— FIT FUNZIONI ——
   function fitTitleOneLine(id, maxSize=64, minSize=16){
-    const el = document.getElementById(id);
-    if (!el) return;
-    const cw = contentWidth(el.parentElement);
-    if (cw <= 0) return;
-
+    const el = document.getElementById(id); if (!el) return;
+    const cw = contentWidth(el.parentElement); if (cw <= 0) return;
     const prevDisp = el.style.display, prevFS = el.style.fontSize;
     const BASE = 100, EPS = 2;
-    el.style.display = 'inline-block';
-    el.style.whiteSpace = 'nowrap';
-    el.style.fontSize = BASE + 'px';
+    el.style.display = 'inline-block'; el.style.whiteSpace = 'nowrap'; el.style.fontSize = BASE + 'px';
     const natural = el.scrollWidth;
-
     if (natural > 0){
       let target = ((cw - EPS) / natural) * BASE;
       target = Math.round(Math.max(minSize, Math.min(maxSize, target)) * 2) / 2;
@@ -152,65 +155,43 @@ const CONFIG = {
     el.style.display = prevDisp || '';
     if (!el.style.fontSize) el.style.fontSize = prevFS;
   }
-
   function fitWhatsAppButton(id, maxSize=20, minSize=12){
     const btn = document.getElementById(id), txt = document.getElementById('whatsapp-text');
     if (!btn || !txt) return;
-    const cw = contentWidth(btn.parentElement);
-    if (cw <= 0) return;
-
+    const cw = contentWidth(btn.parentElement); if (cw <= 0) return;
     const BASE = 24, EPS = 1.5;
-    btn.style.fontSize = BASE + 'px';
-    txt.style.fontSize = BASE + 'px';
+    btn.style.fontSize = BASE + 'px'; txt.style.fontSize = BASE + 'px';
     const w = btn.scrollWidth;
     let target = ((cw - EPS) / w) * BASE;
     target = Math.round(Math.max(minSize, Math.min(maxSize, target)) * 2) / 2;
-    btn.style.fontSize = target + 'px';
-    txt.style.fontSize = target + 'px';
-
+    btn.style.fontSize = target + 'px'; txt.style.fontSize = target + 'px';
     let guard = 0;
     while (btn.scrollWidth > cw && target > minSize && guard < 6){
-      target -= 0.5;
-      btn.style.fontSize = target + 'px';
-      txt.style.fontSize = target + 'px';
-      guard++;
+      target -= 0.5; btn.style.fontSize = target + 'px'; txt.style.fontSize = target + 'px'; guard++;
     }
   }
-
   function fitTimerBlock(id, maxSize=30, minSize=10){
-    const block = document.getElementById(id);
-    if (!block) return;
-    const cw = contentWidth(block.parentElement);
-    if (cw <= 0) return;
-
+    const block = document.getElementById(id); if (!block) return;
+    const cw = contentWidth(block.parentElement); if (cw <= 0) return;
     const label = document.getElementById('timer-label');
     const countdown = document.getElementById('countdown');
     if (!label || !countdown) return;
-
     const realText = countdown.textContent;
     const nbsp = '\u00A0';
     const sampleCountdown = `88${nbsp}h${nbsp}88${nbsp}m${nbsp}88${nbsp}s`;
-
     const BASE = 30, EPS = 2;
     block.style.fontSize = BASE + 'px';
-
-    const prevLabel = label.textContent;
-    const prevCountdown = countdown.textContent;
-
+    const prevLabel = label.textContent; const prevCountdown = countdown.textContent;
     countdown.textContent = sampleCountdown;
     const wLabel = label.scrollWidth, wCount = countdown.scrollWidth;
-
     const natMax = Math.max(wLabel, wCount);
     if (natMax > 0){
       let target = ((cw - EPS) / natMax) * BASE;
       target = Math.max(minSize, Math.min(maxSize, target));
       block.style.fontSize = target + 'px';
     }
-
-    label.textContent = prevLabel;
-    countdown.textContent = prevCountdown || realText;
+    label.textContent = prevLabel; countdown.textContent = prevCountdown || realText;
   }
-
   function resizeAll(){
     fitTitleOneLine('main-title', 64, 16);
     fitTimerBlock('timer-block', 30, 12);
@@ -218,40 +199,33 @@ const CONFIG = {
     updateLayoutOffsets();
   }
 
-  // —— LAYOUT: evita di coprire bottoni in fondo ——
+  // —— LAYOUT (non coprire bottoni in fondo) ——
   function detectFixedFooterHeight(){
     let extra = 0;
     try{
       const nodes = document.body.getElementsByTagName('*');
       for (let i=0; i<nodes.length; i++){
-        const n = nodes[i];
-        if (n.id === 'consultation-bar') continue;
-        const cs = getComputedStyle(n);
-        if (cs.position !== 'fixed') continue;
+        const n = nodes[i]; if (n.id === 'consultation-bar') continue;
+        const cs = getComputedStyle(n); if (cs.position !== 'fixed') continue;
         const rect = n.getBoundingClientRect();
         const atBottom = (window.innerHeight - rect.bottom) <= 2;
         const plausible = rect.height > 0 && rect.height < window.innerHeight * 0.5;
-        if (atBottom && plausible){
-          extra = Math.max(extra, Math.ceil(rect.height));
-        }
+        if (atBottom && plausible){ extra = Math.max(extra, Math.ceil(rect.height)); }
       }
     } catch(e){}
     return extra;
   }
   function updateLayoutOffsets(){
-    const bar = document.getElementById('consultation-bar');
-    if (!bar) return;
+    const bar = document.getElementById('consultation-bar'); if (!bar) return;
     const barH = Math.ceil(bar.getBoundingClientRect().height);
     const extra = detectFixedFooterHeight();
     document.documentElement.style.setProperty('--cb-extra-offset', extra + 'px');
     const desired = barH + extra + 8;
     const current = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
-    if (Math.abs(current - desired) > 1){
-      document.body.style.paddingBottom = desired + 'px';
-    }
+    if (Math.abs(current - desired) > 1){ document.body.style.paddingBottom = desired + 'px'; }
   }
 
-  // —— DEADLINE & SYNC (fuori da init, così sono sempre disponibili) ——
+  // —— DEADLINE & SYNC ——
   function ensureDeadline(){
     let iso = localStorage.getItem(CONFIG.KEY_DEADLINE);
     if (!iso){
@@ -269,7 +243,7 @@ const CONFIG = {
     if (frame && frame.contentWindow) sendDeadlineTo(frame.contentWindow);
   }
 
-  // —— TIMER (DOM-live: cerca i nodi a ogni tick, così sopravvive ai re-render) ——
+  // —— TIMER (DOM-live) ——
   let lastState = 'normal';
   function formatTime(ms){
     if (ms <= 0) return "Lista d'attesa";
@@ -284,8 +258,7 @@ const CONFIG = {
     const blockEl = document.getElementById('timer-block');
     const waBtn = document.getElementById('whatsapp-btn');
     const waText = document.getElementById('whatsapp-text');
-
-    if (!timerEl) return; // se il banner non è montato ora, aspettiamo il prossimo tick
+    if (!timerEl) return;
 
     try{
       const remaining = ensureDeadline() - Date.now();
@@ -297,13 +270,9 @@ const CONFIG = {
 
       if (state !== lastState){
         if (blockEl){
-          if (state === 'expired'){
-            blockEl.classList.remove('timer-urgent'); blockEl.classList.add('expired');
-          } else if (state === 'urgent'){
-            blockEl.classList.add('timer-urgent'); blockEl.classList.remove('expired');
-          } else {
-            blockEl.classList.remove('timer-urgent','expired');
-          }
+          if (state === 'expired'){ blockEl.classList.remove('timer-urgent'); blockEl.classList.add('expired'); }
+          else if (state === 'urgent'){ blockEl.classList.add('timer-urgent'); blockEl.classList.remove('expired'); }
+          else { blockEl.classList.remove('timer-urgent','expired'); }
         }
         if (state === 'expired'){
           if (titleEl) titleEl.textContent = "Consulenze gratuite terminate";
@@ -321,99 +290,72 @@ const CONFIG = {
     }
   }
 
-  // —— MOUNT / INIT ——
+  // —— MOUNT / UNMOUNT ——
   function mountMarkup(){
-    const existing = document.getElementById('consultation-bar');
-    if (existing) existing.remove();
+    if (document.getElementById('consultation-bar')) return;
     const bar = createBanner();
     document.body.appendChild(bar);
-
     const wa = document.getElementById('whatsapp-btn');
-    if (wa){
-      wa.href = `https://wa.me/${CONFIG.PHONE}?text=${encodeURIComponent(CONFIG.MESSAGE)}`;
-    }
-    // primo fit dopo layout/font
+    if (wa) wa.href = `https://wa.me/${CONFIG.PHONE}?text=${encodeURIComponent(CONFIG.MESSAGE)}`;
+
     const firstFit = () => { resizeAll(); };
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(firstFit);
     else requestAnimationFrame(() => requestAnimationFrame(firstFit));
-  }
-
-  function initOnce(){
-    if (window.__cbInitDone) return;
-    window.__cbInitDone = true;
-
-    // listener globali (una volta sola)
-    window.addEventListener('resize', throttle(resizeAll, 150));
-    window.addEventListener('orientationchange', () => setTimeout(resizeAll, 60));
-
-    if ('ResizeObserver' in window){
-      const ro = new ResizeObserver(throttle(resizeAll, 150));
-      ro.observe(document.documentElement);
-    }
-
-    // osserva il DOM: se il banner sparisce (SPA re-render), lo rimontiamo
-    if ('MutationObserver' in window){
-      const keepAlive = new MutationObserver(throttle(() => {
-        if (!document.getElementById('consultation-bar')){
-          mountMarkup();
-          broadcastDeadline();
-        }
-        updateLayoutOffsets();
-      }, 200));
-      keepAlive.observe(document.body, { childList:true, subtree:true });
-    }
-
-    // visibilità/pagina mostrata (iOS back-forward cache, SPA)
-    window.addEventListener('pageshow', () => {
-      if (!document.getElementById('consultation-bar')) {
-        mountMarkup();
-        broadcastDeadline();
-      }
-      resizeAll();
-    });
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible'){
-        if (!document.getElementById('consultation-bar')) {
-          mountMarkup();
-          broadcastDeadline();
-        }
-        resizeAll();
-      }
-    });
-
-    // messaggi dall'iframe (richiesta deadline)
-    window.addEventListener('message', (e) => {
-      if (e?.data?.type === 'watercalc:get-deadline') sendDeadlineTo(e.source);
-    });
-
-    // invia deadline all'iframe appena possibile
-    const frame = document.getElementById('watercalc');
-    if (frame){
-      frame.addEventListener('load', () => setTimeout(broadcastDeadline, 0));
-    }
     broadcastDeadline();
+  }
+  function unmountMarkup(){
+    const el = document.getElementById('consultation-bar');
+    if (el){ el.remove(); }
+    document.body.style.paddingBottom = '';
+    document.documentElement.style.removeProperty('--cb-extra-offset');
+  }
 
-    // storage sync
-    window.addEventListener('storage', (e) => {
-      if (e.key === CONFIG.KEY_DEADLINE) {
-        updateTimer();
-        broadcastDeadline();
-      }
-    });
+  // —— ROUTE GUARD (chi mostra/cosa) ——
+  function routeGuard(){
+    const need = isCourseStepUrl();
+    const has = !!document.getElementById('consultation-bar');
+    if (need && !has){ mountMarkup(); }
+    else if (!need && has){ unmountMarkup(); }
+    if (need) resizeAll();
+  }
 
-    // timer: assicurati di non avviare più intervalli
-    if (!window.__cbInterval){
+  // —— HOOK STORICO & EVENTI SPA ——
+  (function hookHistory(){
+    const push = history.pushState, rep = history.replaceState;
+    history.pushState = function(){ const r = push.apply(this, arguments); window.dispatchEvent(new Event('cb:routechange')); return r; };
+    history.replaceState = function(){ const r = rep.apply(this, arguments); window.dispatchEvent(new Event('cb:routechange')); return r; };
+  })();
+  window.addEventListener('cb:routechange', () => setTimeout(routeGuard, 0));
+  window.addEventListener('popstate', () => setTimeout(routeGuard, 0));
+  window.addEventListener('pageshow', routeGuard);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') routeGuard(); });
+
+  // Mutazioni DOM (fallback e keep-alive)
+  if ('MutationObserver' in window){
+    const mo = new MutationObserver(throttle(routeGuard, 200));
+    mo.observe(document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['class','style']});
+  }
+
+  // Resize listeners
+  window.addEventListener('resize', throttle(resizeAll, 150));
+  window.addEventListener('orientationchange', () => setTimeout(resizeAll, 60));
+  if ('ResizeObserver' in window){
+    const ro = new ResizeObserver(throttle(resizeAll, 150));
+    ro.observe(document.documentElement);
+  }
+
+  // Storage sync (deadline)
+  window.addEventListener('storage', (e) => {
+    if (e.key === CONFIG.KEY_DEADLINE) {
       updateTimer();
-      window.__cbInterval = setInterval(updateTimer, 1000);
+      broadcastDeadline();
     }
+  });
+
+  // —— STARTUP —— (niente refresh richiesto)
+  routeGuard();                   // decide subito se montare o no
+  if (!window.__cbInterval){      // timer globale una sola volta
+    updateTimer();
+    window.__cbInterval = setInterval(updateTimer, 1000);
   }
-
-  function init(){
-    mountMarkup();
-    initOnce();
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
-
 })();
