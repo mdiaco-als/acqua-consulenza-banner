@@ -3,12 +3,13 @@
   if (window.consultationBannerLoaded) return;
   window.consultationBannerLoaded = true;
 
-  // ===== CONFIG (legge i data-* dal <script src=...>) =====
+  // ========== CONFIG (legge i data-* dal <script src=...>) ==========
   const _scr = document.currentScript;
   const _ds  = _scr ? _scr.dataset : {};
+  const DEBUG = _ds.debug === '1';
 
   function parseDurationFlexible(ds){
-    // Priorità: duration="3h26m15s"  -> minutes -> hours -> default 48h
+    // Priorità: duration="3h26m15s" -> minutes -> hours -> default 48h
     if (ds.duration){
       const m = String(ds.duration).match(/^\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?\s*$/i);
       if (m){
@@ -29,7 +30,7 @@
     MESSAGE: _ds.message || "Ciao Massimiliano, voglio prenotare la consulenza gratuita sull'acqua. Preferisco [mattina/pomeriggio/sera]"
   };
 
-  // ===== UTILS =====
+  // ========== UTILS ==========
   const throttle = (fn, wait = 150) => { let t = 0; return (...a)=>{ const n=Date.now(); if(n-t>=wait){ t=n; fn(...a);} }; };
   const pad2 = n => String(n).padStart(2,'0');
 
@@ -40,16 +41,35 @@
     return Math.max(0, node.clientWidth - pl - pr);
   }
 
-  // ===== SOLO DENTRO IL CORSO (pagine lezione) =====
-  // Accetta: /p-63890202/1  e anche .../1?x=... o .../1#anchor
+  const log = (...args)=>{ if (DEBUG) try{ console.log('[CB]', ...args);}catch(e){} };
+
+  // ========== SOLO DENTRO IL CORSO (pagine lezione) ==========
+  // Accetta:
+  //  - /p-63890202/1              (pathname)
+  //  - /p-63890202/1?x=...        (con query)
+  //  - /p-63890202#/1             (hash router)
+  //  - /p-63890202?step=1         (fallback query)
   function isCourseStepUrl(u){
     try{
-      const href = (u ? (u.href || "") : "") || (location.pathname + (location.search||"") + (location.hash||""));
-      return /\/p-\d+\/[^\/?#]+(?:\/|$|\?|#)/.test(href);
+      const loc = u || window.location;
+      const pn  = loc.pathname || '';
+      const qs  = loc.search   || '';
+      const hs  = loc.hash     || '';
+
+      // Step nel pathname
+      if (/\/p-\d+\/[^\/?#]+(?:\/|$)/.test(pn)) { log('match pathname'); return true; }
+
+      // Hash routing: .../p-<id>#/<step>
+      if (/\/p-\d+(?:\/|$)/.test(pn) && /^#\/[^\/?#]+/.test(hs)) { log('match hash'); return true; }
+
+      // Query fallback: ?step=..., ?lesson=..., ?page=...
+      if (/\/p-\d+(?:\/|$)/.test(pn) && /[?&](?:step|lesson|page|s)=\w+/.test(qs)) { log('match query'); return true; }
+
+      return false;
     } catch(e){ return false; }
   }
 
-  // ===== CSS =====
+  // ========== CSS ==========
   const css = `
     :root{ --cb-extra-offset: 0px; }
     .consultation-bar{
@@ -122,7 +142,7 @@
   style.textContent = css;
   document.head.appendChild(style);
 
-  // ===== MARKUP =====
+  // ========== MARKUP ==========
   function createBanner(){
     const el = document.createElement('div');
     el.className = 'consultation-bar';
@@ -151,7 +171,7 @@
     return el;
   }
 
-  // ===== FIT FUNZIONI =====
+  // ========== FIT ==========
   function fitTitleOneLine(id, maxSize=64, minSize=16){
     const el = document.getElementById(id); if (!el) return;
     const cw = contentWidth(el.parentElement); if (cw <= 0) return;
@@ -215,7 +235,7 @@
     updateLayoutOffsets();
   }
 
-  // ===== LAYOUT (evita di coprire bottoni in fondo) =====
+  // ========== LAYOUT (evita di coprire bottoni) ==========
   function detectFixedFooterHeight(){
     let extra = 0;
     try{
@@ -241,7 +261,7 @@
     if (Math.abs(current - desired) > 1){ document.body.style.paddingBottom = desired + 'px'; }
   }
 
-  // ===== DEADLINE & SYNC =====
+  // ========== DEADLINE & SYNC ==========
   function ensureDeadline(){
     let iso = localStorage.getItem(CONFIG.KEY_DEADLINE);
     if (!iso){
@@ -259,7 +279,7 @@
     if (frame && frame.contentWindow) sendDeadlineTo(frame.contentWindow);
   }
 
-  // ===== TIMER (DOM-live) =====
+  // ========== TIMER ==========
   let lastState = 'normal';
   function formatTime(ms){
     if (ms <= 0) return "Lista d'attesa";
@@ -301,17 +321,16 @@
         lastState = state;
       }
     } catch(e){
-      console.warn('Errore timer:', e);
+      if (DEBUG) console.warn('Errore timer:', e);
       if (timerEl) timerEl.textContent = "Lista d'attesa";
     }
   }
 
-  // ===== MOUNT / UNMOUNT =====
+  // ========== MOUNT / UNMOUNT ==========
   function mountMarkup(){
     if (document.getElementById('consultation-bar')) return;
     const bar = createBanner();
     document.body.appendChild(bar);
-
     const wa = document.getElementById('whatsapp-btn');
     if (wa) wa.href = `https://wa.me/${CONFIG.PHONE}?text=${encodeURIComponent(CONFIG.MESSAGE)}`;
 
@@ -320,24 +339,27 @@
     else requestAnimationFrame(() => requestAnimationFrame(firstFit));
 
     broadcastDeadline();
+    log('mounted');
   }
   function unmountMarkup(){
     const el = document.getElementById('consultation-bar');
     if (el){ el.remove(); }
     document.body.style.paddingBottom = '';
     document.documentElement.style.removeProperty('--cb-extra-offset');
+    log('unmounted');
   }
 
-  // ===== ROUTE GUARD =====
+  // ========== ROUTE GUARD ==========
   function routeGuard(){
     const need = isCourseStepUrl();
     const has = !!document.getElementById('consultation-bar');
     if (need && !has){ mountMarkup(); }
     else if (!need && has){ unmountMarkup(); }
     if (need) resizeAll();
+    log('routeGuard', {need, has, url: location.href});
   }
 
-  // ===== HOOK STORICO & EVENTI SPA =====
+  // ========== HOOK STORICO & EVENTI SPA ==========
   (function hookHistory(){
     try{
       const push = history.pushState, rep = history.replaceState;
@@ -372,7 +394,7 @@
     }
   });
 
-  // ===== STARTUP =====
+  // ========== STARTUP ==========
   function startRouteGuard(){
     if (!document.body) {
       window.addEventListener('DOMContentLoaded', routeGuard, { once:true });
