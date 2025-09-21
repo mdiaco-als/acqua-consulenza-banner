@@ -3,17 +3,36 @@
   if (window.consultationBannerLoaded) return;
   window.consultationBannerLoaded = true;
 
-  // —— CONFIG ——
+  // ===== CONFIG (legge i data-* dal <script src=...>) =====
+  const _scr = document.currentScript;
+  const _ds  = _scr ? _scr.dataset : {};
+
+  function parseDurationFlexible(ds){
+    // Priorità: duration="3h26m15s"  -> minutes -> hours -> default 48h
+    if (ds.duration){
+      const m = String(ds.duration).match(/^\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?\s*$/i);
+      if (m){
+        const h = +m[1] || 0, mi = +m[2] || 0, se = +m[3] || 0;
+        const ms = (h*3600 + mi*60 + se) * 1000;
+        if (ms > 0) return ms;
+      }
+    }
+    if (Number(ds.durationMinutes) > 0) return Number(ds.durationMinutes) * 60 * 1000;
+    if (Number(ds.durationHours)   > 0) return Number(ds.durationHours)   * 3600 * 1000;
+    return 48 * 3600 * 1000;
+  }
+
   const CONFIG = {
     KEY_DEADLINE: "water_calc_deadline_v3",
-    DURATION_MS: 48 * 60 * 60 * 1000, // 48h
-    PHONE: "393406743923",
-    MESSAGE: "Ciao Massimiliano, voglio prenotare la consulenza gratuita sull'acqua. Preferisco [mattina/pomeriggio/sera]"
+    DURATION_MS: parseDurationFlexible(_ds),
+    PHONE:   _ds.phone   || "393406743923",
+    MESSAGE: _ds.message || "Ciao Massimiliano, voglio prenotare la consulenza gratuita sull'acqua. Preferisco [mattina/pomeriggio/sera]"
   };
 
-  // —— UTILS ——
+  // ===== UTILS =====
   const throttle = (fn, wait = 150) => { let t = 0; return (...a)=>{ const n=Date.now(); if(n-t>=wait){ t=n; fn(...a);} }; };
   const pad2 = n => String(n).padStart(2,'0');
+
   function contentWidth(node){
     if (!node) return 0;
     const cs = getComputedStyle(node);
@@ -21,16 +40,16 @@
     return Math.max(0, node.clientWidth - pl - pr);
   }
 
-  // —— SOLO DENTRO IL CORSO —— (URL tipo …/p-63890202/1)
+  // ===== SOLO DENTRO IL CORSO (pagine lezione) =====
+  // Accetta: /p-63890202/1  e anche .../1?x=... o .../1#anchor
   function isCourseStepUrl(u){
     try{
-      const p = (u || location).pathname;
-      // …/qualcosa-p-<ID>/<STEP>(/…)
-      return /\/p-\d+\/\d+(?:\/|$)/.test(p);
+      const href = (u ? (u.href || "") : "") || (location.pathname + (location.search||"") + (location.hash||""));
+      return /\/p-\d+\/[^\/?#]+(?:\/|$|\?|#)/.test(href);
     } catch(e){ return false; }
   }
 
-  // —— CSS ——
+  // ===== CSS =====
   const css = `
     :root{ --cb-extra-offset: 0px; }
     .consultation-bar{
@@ -103,7 +122,7 @@
   style.textContent = css;
   document.head.appendChild(style);
 
-  // —— MARKUP ——
+  // ===== MARKUP =====
   function createBanner(){
     const el = document.createElement('div');
     el.className = 'consultation-bar';
@@ -132,7 +151,7 @@
     return el;
   }
 
-  // —— FIT FUNZIONI ——
+  // ===== FIT FUNZIONI =====
   function fitTitleOneLine(id, maxSize=64, minSize=16){
     const el = document.getElementById(id); if (!el) return;
     const cw = contentWidth(el.parentElement); if (cw <= 0) return;
@@ -196,7 +215,7 @@
     updateLayoutOffsets();
   }
 
-  // —— LAYOUT (non coprire bottoni in fondo) ——
+  // ===== LAYOUT (evita di coprire bottoni in fondo) =====
   function detectFixedFooterHeight(){
     let extra = 0;
     try{
@@ -222,7 +241,7 @@
     if (Math.abs(current - desired) > 1){ document.body.style.paddingBottom = desired + 'px'; }
   }
 
-  // —— DEADLINE & SYNC ——
+  // ===== DEADLINE & SYNC =====
   function ensureDeadline(){
     let iso = localStorage.getItem(CONFIG.KEY_DEADLINE);
     if (!iso){
@@ -240,7 +259,7 @@
     if (frame && frame.contentWindow) sendDeadlineTo(frame.contentWindow);
   }
 
-  // —— TIMER (DOM-live) ——
+  // ===== TIMER (DOM-live) =====
   let lastState = 'normal';
   function formatTime(ms){
     if (ms <= 0) return "Lista d'attesa";
@@ -287,17 +306,19 @@
     }
   }
 
-  // —— MOUNT / UNMOUNT ——
+  // ===== MOUNT / UNMOUNT =====
   function mountMarkup(){
     if (document.getElementById('consultation-bar')) return;
     const bar = createBanner();
     document.body.appendChild(bar);
+
     const wa = document.getElementById('whatsapp-btn');
     if (wa) wa.href = `https://wa.me/${CONFIG.PHONE}?text=${encodeURIComponent(CONFIG.MESSAGE)}`;
 
     const firstFit = () => { resizeAll(); };
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(firstFit);
     else requestAnimationFrame(() => requestAnimationFrame(firstFit));
+
     broadcastDeadline();
   }
   function unmountMarkup(){
@@ -307,7 +328,7 @@
     document.documentElement.style.removeProperty('--cb-extra-offset');
   }
 
-  // —— ROUTE GUARD (chi mostra/cosa) ——
+  // ===== ROUTE GUARD =====
   function routeGuard(){
     const need = isCourseStepUrl();
     const has = !!document.getElementById('consultation-bar');
@@ -316,21 +337,23 @@
     if (need) resizeAll();
   }
 
-  // —— HOOK STORICO & EVENTI SPA ——
+  // ===== HOOK STORICO & EVENTI SPA =====
   (function hookHistory(){
-    const push = history.pushState, rep = history.replaceState;
-    history.pushState = function(){ const r = push.apply(this, arguments); window.dispatchEvent(new Event('cb:routechange')); return r; };
-    history.replaceState = function(){ const r = rep.apply(this, arguments); window.dispatchEvent(new Event('cb:routechange')); return r; };
+    try{
+      const push = history.pushState, rep = history.replaceState;
+      history.pushState = function(){ const r = push.apply(this, arguments); window.dispatchEvent(new Event('cb:routechange')); return r; };
+      history.replaceState = function(){ const r = rep.apply(this, arguments); window.dispatchEvent(new Event('cb:routechange')); return r; };
+    }catch(e){}
   })();
   window.addEventListener('cb:routechange', () => setTimeout(routeGuard, 0));
-  window.addEventListener('popstate', () => setTimeout(routeGuard, 0));
+  window.addEventListener('popstate',       () => setTimeout(routeGuard, 0));
   window.addEventListener('pageshow', routeGuard);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') routeGuard(); });
 
-  // Mutazioni DOM (fallback e keep-alive)
+  // Mutazioni DOM (re-render SPA)
   if ('MutationObserver' in window){
     const mo = new MutationObserver(throttle(routeGuard, 200));
-    mo.observe(document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['class','style']});
+    mo.observe(document.documentElement, {childList:true, subtree:true});
   }
 
   // Resize listeners
@@ -349,9 +372,16 @@
     }
   });
 
-  // —— STARTUP —— (niente refresh richiesto)
-  routeGuard();                   // decide subito se montare o no
-  if (!window.__cbInterval){      // timer globale una sola volta
+  // ===== STARTUP =====
+  function startRouteGuard(){
+    if (!document.body) {
+      window.addEventListener('DOMContentLoaded', routeGuard, { once:true });
+    } else {
+      routeGuard();
+    }
+  }
+  startRouteGuard();
+  if (!window.__cbInterval){
     updateTimer();
     window.__cbInterval = setInterval(updateTimer, 1000);
   }
