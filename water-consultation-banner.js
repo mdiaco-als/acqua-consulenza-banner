@@ -3,16 +3,13 @@
   if (window.consultationBannerLoaded) return;
   window.consultationBannerLoaded = true;
 
-// —— CONFIG (legge i data-* dal tag <script> che include il file) ——
-const _scr = document.currentScript;
-const _ds  = _scr ? _scr.dataset : {};
-const CONFIG = {
-  KEY_DEADLINE: "water_calc_deadline_v3",
-  DURATION_MS: (Number(_ds.durationHours) > 0 ? Number(_ds.durationHours) : 48) * 3600 * 1000,
-  PHONE: _ds.phone || "393406743923",
-  MESSAGE: _ds.message || "Ciao Massimiliano, voglio prenotare la consulenza gratuita sull'acqua. Preferisco [mattina/pomeriggio/sera]"
-};
-
+  // —— CONFIG ——
+  const CONFIG = {
+    KEY_DEADLINE: "water_calc_deadline_v3",
+    DURATION_MS: 48 * 60 * 60 * 1000, // 48h
+    PHONE: "393406743923",
+    MESSAGE: "Ciao Massimiliano, voglio prenotare la consulenza gratuita sull'acqua. Preferisco [mattina/pomeriggio/sera]"
+  };
 
   // —— UTILS ——
   const throttle = (fn, wait = 150) => { let t = 0; return (...a)=>{ const n=Date.now(); if(n-t>=wait){ t=n; fn(...a);} }; };
