@@ -545,31 +545,6 @@ const CONFIG = {
         if (!document.getElementById('consultation-bar')){
           mountMarkup();
           broadcastDeadline();
-
-    // storage sync
-    window.addEventListener('storage', (e) => {
-      if (e.key === CONFIG.KEY_DEADLINE) {
-        updateTimer();
-        broadcastDeadline();
-      }
-    });
-
-    // timer: assicurati di non avviare più intervalli
-    if (!window.__cbInterval){
-      updateTimer();
-      window.__cbInterval = setInterval(updateTimer, 1000);
-    }
-  }
-
-  function init(){
-    mountMarkup();
-    initOnce();
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
-
-})();();
         }
         updateLayoutOffsets();
       }, 200));
@@ -604,4 +579,29 @@ const CONFIG = {
     if (frame){
       frame.addEventListener('load', () => setTimeout(broadcastDeadline, 0));
     }
-    broadcastDeadline
+    broadcastDeadline();
+
+    // storage sync
+    window.addEventListener('storage', (e) => {
+      if (e.key === CONFIG.KEY_DEADLINE) {
+        updateTimer();
+        broadcastDeadline();
+      }
+    });
+
+    // timer: assicurati di non avviare più intervalli
+    if (!window.__cbInterval){
+      updateTimer();
+      window.__cbInterval = setInterval(updateTimer, 1000);
+    }
+  }
+
+  function init(){
+    mountMarkup();
+    initOnce();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+
+})();
